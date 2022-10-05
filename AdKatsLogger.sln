@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PRoConEvents", "src\PRoConEvents.csproj", "{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdKatsLoggerTest", "test\AdKatsLoggerTest\AdKatsLoggerTest.csproj", "{2E1C842A-EDFD-4D83-8743-B15E41D20882}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E1C842A-EDFD-4D83-8743-B15E41D20882}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E1C842A-EDFD-4D83-8743-B15E41D20882}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E1C842A-EDFD-4D83-8743-B15E41D20882}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E1C842A-EDFD-4D83-8743-B15E41D20882}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D9776DD6-F7A9-4B26-87D8-8E27FC3B2B56}
+	EndGlobalSection
+EndGlobal
