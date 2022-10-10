@@ -23,10 +23,20 @@ jobs:
       uses: NuGet/setup-nuget@v1.0.7
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: nuget restore AdKatsLogger.sln
 
-    - name: Build Solution
-      run: dotnet build
+    - name: Build solution
+      run: msbuild.exe AdKatsLogger.sln /p:platform="Any CPU" /p:configuration="Debug"
+
+    - name: Setup MySQL
+      uses: shogo82148/actions-setup-mysql@v1
+      with:
+        mysql-version: '5.7'
+        user: adkatslogger
+        password: adkatslogger
+
+    - name: Setup database
+      run: mysql -uroot -h127.0.0.1 -e 'CREATE DATABASE adkatslogger'
 
     - name: Run tests
       run: dotnet test .\test\bin\Debug\AdKatsLoggerTest.dll
