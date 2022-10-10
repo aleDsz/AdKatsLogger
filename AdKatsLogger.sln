@@ -5,7 +5,7 @@ VisualStudioVersion = 17.2.32630.192
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PRoConEvents", "src\PRoConEvents.csproj", "{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdKatsLoggerTest", "test\AdKatsLoggerTest\AdKatsLoggerTest.csproj", "{2E1C842A-EDFD-4D83-8743-B15E41D20882}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdKatsLoggerTest", "test\AdKatsLoggerTest.csproj", "{2E1C842A-EDFD-4D83-8743-B15E41D20882}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
