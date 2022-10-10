@@ -26,7 +26,7 @@ jobs:
       run: nuget restore AdKatsLogger.sln
 
     - name: Build Solution
-      run: msbuild.exe AdKatsLogger.sln /nologo /nr:false /p:platform="Any CPU" /p:configuration="Debug"
+      run: msbuild.exe AdKatsLogger.sln /t:Restore /p:platform="Any CPU" /p:configuration="Debug"
 
     - name: Run tests
       uses: microsoft/vstest-action@v1.0.0
