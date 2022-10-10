@@ -1,0 +1,7 @@
+version: 2
+updates:
+- package-ecosystem: NuGet
+  directory: "/test"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 20
