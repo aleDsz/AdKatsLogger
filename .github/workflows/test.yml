@@ -23,14 +23,10 @@ jobs:
       uses: NuGet/setup-nuget@v1.0.7
 
     - name: Restore dependencies
-      run: nuget restore AdKatsLogger.sln
+      run: dotnet restore
 
     - name: Build Solution
-      run: msbuild.exe AdKatsLogger.sln /p:platform="Any CPU" /p:configuration="Debug"
+      run: dotnet build
 
     - name: Run tests
-      uses: microsoft/vstest-action@v1.0.0
-      with:
-        testAssembly: AdKatsLoggerTest.dll
-        searchFolder: .\test\bin\Debug\
-        runInParallel: true
+      run: dotnet test .\test\bin\Debug\AdKatsLoggerTest.dll
