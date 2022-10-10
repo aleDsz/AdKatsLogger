@@ -39,4 +39,4 @@ jobs:
       run: mysql -u root -h localhost -e 'CREATE DATABASE adkatslogger'
 
     - name: Run tests
-      run: dotnet test test\bin\Debug\AdKatsLoggerTest.dll /TestAdapterPath:"..\packages\MSTest.TestAdapter.2.2.7"
+      run: mstest /testcontainer:test\bin\Debug\AdKatsLoggerTest.dll
