@@ -10,10 +10,6 @@ jobs:
   build:
     runs-on: windows-latest
 
-    env:
-      Solution_Name: AdKatsLogger.sln
-      Test_Project_Path: test\AdKatsLoggerTest.csproj
-
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -24,7 +20,7 @@ jobs:
       uses: microsoft/setup-msbuild@v1
 
     - name: Setup NuGet
-      uses: NuGet/setup-nuget@v1.0.2
+      uses: NuGet/setup-nuget@v1.0.7
 
     - name: Restore dependencies
       run: nuget restore AdKatsLogger.sln
@@ -32,7 +28,7 @@ jobs:
     - name: Build Solution
       run: msbuild.exe AdKatsLogger.sln /nologo /nr:false /p:platform="Any CPU" /p:configuration="Debug"
 
-    - name: Run vstests
+    - name: Run tests
       uses: microsoft/vstest-action@v1.0.0
       with:
         testAssembly: AdKatsLoggerTest.dll
