@@ -139,10 +139,10 @@ namespace PRoConEvents
 		private string _serverName;
 		private bool _isPluginEnabled;
 		private bool _isStreaming;
-		private bool _hasAdKatsTables;
 		private bool _isPluginReady;
 		private bool _isDatabaseReady;
 		private DateTime? _lastCommandExecutedAt;
+		private DateTime? _lastServerUpdatedAt;
 
 		// Toggles
 		// Chat Logging
@@ -217,7 +217,6 @@ namespace PRoConEvents
 			this._isStreaming = true;
 			this._isPluginEnabled = false;
 			this._isPluginReady = false;
-			this._hasAdKatsTables = false;
 			this._isDatabaseReady = false;
 
 			this._spamProtection = new SpamProtection(this._numberOfAllowedRequests);
@@ -855,12 +854,38 @@ namespace PRoConEvents
 				ThreadPool.QueueUserWorkItem(delegate { this.LogChat(speaker, message, "Squad"); });
 		}
 
-#if DEBUG
-		// Debug/Test only methods
+        public override void OnServerInfo(CServerInfo serverInfo)
+        {
+			this._mapStats.GameMode = serverInfo.GameMode;
+			this._mapStats.PlayerCountList.Add(serverInfo.PlayerCount);
 
+			if (this._mapStats.MapLoadedAt == DateTime.MinValue || this._mapStats.MapLoadedAt == null)
+				this._mapStats.MapLoadedAt = DateTime.Now;
+
+			this._mapStats.MapName = serverInfo.Map;
+			this._mapStats.Round = serverInfo.CurrentRound;
+			this._mapStats.NumberOfRounds = serverInfo.TotalRounds;
+			this._mapStats.ServerPlayerMax = serverInfo.MaxPlayerCount;
+
+			var secondsFromLastUpdate = 0D;
+			
+			if (this._lastServerUpdatedAt != null)
+				secondsFromLastUpdate = DateTime.Now.Subtract(this._lastServerUpdatedAt.Value).TotalSeconds;
+
+			if (this._serverID == 0 || this._serverInfoDelay <= secondsFromLastUpdate)
+            {
+				this._lastServerUpdatedAt = DateTime.Now;
+				ThreadPool.QueueUserWorkItem(delegate { this.MaybeCreateServer(serverInfo); });
+			}
+
+			base.OnServerInfo(serverInfo);
+		}
+
+		#region Debug/Test only methods
+#if DEBUG
 		public Dictionary<string, Stats> __StatsTracker__ { get { return this._statsTracker; } }
 		public Dictionary<string, DateTime> __WelcomeStatsDictionary__ { get { return this._welcomeStatsDictionary; } }
-		public int __GetCurrentRankFromPlayer__(string soldierName) => this.GetRank(soldierName);
+		public int? __GetCurrentRankFromPlayer__(string soldierName) => this.GetRank(soldierName);
 
 		public void __CleanDatabase__()
 		{
@@ -939,9 +964,9 @@ namespace PRoConEvents
 			}
 		}
 
-		public int __GetPlayerIDFromPlayer__(string soldierName, int gameID)
+		public int? __GetPlayerIDFromPlayer__(string soldierName, int gameID)
 		{
-			if (!this._isDatabaseReady) return -1;
+			if (!this._isDatabaseReady) return null;
 
 			var parameters = new Dictionary<string, object>();
 
@@ -951,15 +976,15 @@ namespace PRoConEvents
 			var query = $"SELECT PlayerID FROM tbl_playerdata WHERE GameID = @GameID AND SoldierName = @SoldierName";
 			var result = this.ReadFromQuery(query, parameters);
 
-			if (result == null) return -1;
+			if (result == null) return null;
 			if (result.Count == 1) return Convert.ToInt32(result[0]["PlayerID"]);
 
-			return -1;
+			return null;
 		}
 
-		public int __GetStatsIDFromPlayerID__(int serverID, int playerID)
+		public int? __GetStatsIDFromPlayerID__(int serverID, int playerID)
 		{
-			if (!this._isDatabaseReady) return -1;
+			if (!this._isDatabaseReady) return null;
 
 			var parameters = new Dictionary<string, object>();
 
@@ -969,10 +994,10 @@ namespace PRoConEvents
 			var query = $"SELECT StatsID FROM tbl_server_player WHERE ServerID = @ServerID AND PlayerID = @PlayerID";
 			var result = this.ReadFromQuery(query, parameters);
 
-			if (result == null) return -1;
+			if (result == null) return null;
 			if (result.Count == 1) return Convert.ToInt32(result[0]["StatsID"]);
 
-			return -1;
+			return null;
 		}
 
 		public List<Dictionary<string, object>> __GetChatLogFromPlayer__(string soldierName)
@@ -983,7 +1008,7 @@ namespace PRoConEvents
 
 			parameters.Add("SoldierName", soldierName);
 
-			var query = $"SELECT * FROM tbl_chatlog WHERE SoldierName = @SoldierName";
+			var query = $"SELECT * FROM tbl_chatlog WHERE logSoldierName = @SoldierName";
 			var result = this.ReadFromQuery(query, parameters);
 
 			if (result == null) return null;
@@ -992,8 +1017,28 @@ namespace PRoConEvents
 			return null;
 		}
 
-		public void __InsertData__(string table, Dictionary<string, object> keyValue) => this.InsertData(table, keyValue, this._tableBuilderLock);
+		public int? __GetServerID__(string ipAddress)
+		{
+			if (!this._isDatabaseReady) return null;
+			if (this._serverID != 0) return this._serverID;
+
+			var parameters = new Dictionary<string, object>();
+			parameters.Add("IP_Address", ipAddress);
+
+			var query = "SELECT `ServerID` FROM tbl_server WHERE IP_Address = @IP_Address";
+			var result = this.ReadFromQuery(query, parameters);
+
+			if (result == null) return null;
+			if (result.Count == 1) return Convert.ToInt32(result[0]["ServerID"]);
+
+			return null;
+		}
+
+		public void __SetServerID__(int serverID) => this._serverID = serverID;
+
+		public long? __InsertData__(string table, Dictionary<string, object> keyValue) => this.InsertData(table, keyValue, this._tableBuilderLock);
 #endif
+		#endregion
 
 		// Thread methods
 
@@ -1025,7 +1070,12 @@ namespace PRoConEvents
 				keyValue.Add("logSoldierName", speaker);
 				keyValue.Add("logMessage", message);
 
-				InsertData("tbl_chatlog", keyValue, this._chatLogLock);
+#if DEBUG
+				var result = this.InsertData("tbl_chatlog", keyValue, this._chatLogLock);
+				if (!result.HasValue) throw new NullReferenceException("tbl_chatlog.ID is null");
+#else
+				this.InsertData("tbl_chatlog", keyValue, this._chatLogLock);
+#endif
 				return;
 			}
 
@@ -1047,7 +1097,9 @@ namespace PRoConEvents
 						{
 							this.LogDebug("CreateSession", $"Session for player {soldierName} created");
 							this._sessionTracker.Add(soldierName, new Stats(guid, score, 0, 0, 0, 0, 0, 0, this._offset, this._usedWeaponDictionary));
-							this._sessionTracker[soldierName].Rank = this.GetRank(soldierName);
+
+							var rank = this.GetRank(soldierName);
+							if (rank != null) this._sessionTracker[soldierName].Rank = rank.Value;
 						}
 					}
 				}
@@ -1066,6 +1118,80 @@ namespace PRoConEvents
 						if (guid.Length > 2) this._sessionTracker[soldierName].EAGuid = guid;
 					}
 				}
+			}
+		}
+
+		private void MaybeCreateServer(CServerInfo serverInfo)
+		{
+			if (!this._isDatabaseReady)
+			{
+				this.LogError("MaybeCreateServer", "Database isn't connected yet");
+				return;
+			}
+
+			this.LogDebug("MaybeCreateServer", "Executing the ServerID query");
+
+			var query = "SELECT `ServerID` FROM tbl_server WHERE IP_Address = @IP_Address";
+			var ipAddress = $"{this._serverHostname}:{this._serverPort}";
+
+			var queryKeyValue = new Dictionary<string, object>();
+			queryKeyValue.Add("IP_Address", ipAddress);
+
+			var result = this.ReadFromQuery(query, queryKeyValue);
+			if (result == null) this._serverID = 0;
+			if (result.Count == 1) this._serverID = Convert.ToInt32(result[0]["ServerID"]);
+
+			var statementKeyValue = new Dictionary<string, object>();
+
+			statementKeyValue.Add("IP_Address", ipAddress);
+			statementKeyValue.Add("ServerName", serverInfo.ServerName);
+			statementKeyValue.Add("ServerGroup", ipAddress);
+			statementKeyValue.Add("UsedSlots", serverInfo.PlayerCount);
+			statementKeyValue.Add("MaxSlots", serverInfo.MaxPlayerCount);
+			statementKeyValue.Add("MapName", serverInfo.Map);
+			statementKeyValue.Add("GameID", ipAddress);
+			statementKeyValue.Add("GameMode", serverInfo.GameMode);
+
+			if (this._serverID == 0)
+				this._serverID = Convert.ToInt32(this.InsertData("tbl_server", statementKeyValue));
+
+			if (this._serverID != 0)
+			{
+				statementKeyValue.Remove("IP_Address");
+				this.UpdateData("tbl_server", statementKeyValue, queryKeyValue);
+			}
+
+			this.MaybeUpdateCurrentPlayerStatsTable(serverInfo);
+		}
+
+		private void MaybeUpdateCurrentPlayerStatsTable(CServerInfo serverInfo)
+		{
+			if (!this._isDatabaseReady)
+			{
+				this.LogError("MaybeUpdateCurrentPlayerStatsTable", "Database isn't connected yet");
+				return;
+			}
+
+			this.LogDebug("MaybeUpdateCurrentPlayerStatsTable", "Checking if AdKatsLogger should update team scores");
+
+			if (this._serverID == 0 || this._enumStatsRealTimeScoreboard == enumBoolYesNo.No || serverInfo.TeamScores.Count == 0)
+				return;
+
+			var queryKeyValue = new Dictionary<string, object>();
+			queryKeyValue.Add("ServerID", this._serverID);
+
+			this.DeleteData("tbl_teamscores", queryKeyValue);
+
+			foreach (var teamScore in serverInfo.TeamScores)
+            {
+				var statementKeyValue = new Dictionary<string, object>();
+
+				statementKeyValue.Add("ServerID", this._serverID);
+				statementKeyValue.Add("TeamID", teamScore.TeamID);
+				statementKeyValue.Add("Score", teamScore.Score);
+				statementKeyValue.Add("WinningScore", teamScore.WinningScore);
+
+				this.InsertData("tbl_teamscores", statementKeyValue);
 			}
 		}
 
@@ -1096,13 +1222,13 @@ namespace PRoConEvents
                     `IP_Address` VARCHAR(45) NULL DEFAULT NULL,
                     `ServerName` VARCHAR(200) NULL DEFAULT NULL,
                     `GameID` tinyint(4)unsigned NOT NULL DEFAULT '0',
-                    `usedSlots` SMALLINT UNSIGNED NULL DEFAULT 0,
-                    `maxSlots` SMALLINT UNSIGNED NULL DEFAULT 0,
-                    `mapName` VARCHAR(45) NULL DEFAULT NULL,
-                    `fullMapName` TEXT NULL DEFAULT NULL,
-                    `Gamemode` VARCHAR(45) NULL DEFAULT NULL,
+                    `UsedSlots` SMALLINT UNSIGNED NULL DEFAULT 0,
+                    `MaxSlots` SMALLINT UNSIGNED NULL DEFAULT 0,
+                    `MapName` VARCHAR(45) NULL DEFAULT NULL,
+                    `FullMapName` TEXT NULL DEFAULT NULL,
+                    `GameMode` VARCHAR(45) NULL DEFAULT NULL,
                     `GameMod` VARCHAR(45) NULL DEFAULT NULL,
-                    `PBversion` VARCHAR(45) NULL DEFAULT NULL,
+                    `PunkbusterVersion` VARCHAR(45) NULL DEFAULT NULL,
                     `ConnectionState` VARCHAR(45) NULL DEFAULT NULL,
                     PRIMARY KEY (`ServerID`),
                     INDEX `INDEX_SERVERGROUP` (`ServerGroup` ASC),
@@ -1392,7 +1518,7 @@ namespace PRoConEvents
 			}
 		}
 
-		private int GetRank(string soldierName)
+		private int? GetRank(string soldierName)
         {
 			this.LogDebug("GetRank", $"Retrieving rank from player {soldierName}");
 			var query = this.BuildGetRankQuery();
@@ -1400,20 +1526,14 @@ namespace PRoConEvents
 			var keyValue = new Dictionary<string, object>();
 			keyValue.Add("soldierName", soldierName);
 
-			if (this._enumStatsOverallRanking == enumBoolYesNo.Yes)
-            {
-				keyValue.Add("serverGroup", this._serverGroup);
-			}
-			else
-            {
-				keyValue.Add("serverID", this._serverID);
-			}
+			if (this._enumStatsOverallRanking == enumBoolYesNo.Yes) keyValue.Add("serverGroup", this._serverGroup);
+			if (this._enumStatsOverallRanking == enumBoolYesNo.No) keyValue.Add("serverID", this._serverID);
 
 			var result = this.ReadFromQuery(query, keyValue);
-			if (result == null) return -1;
+			if (result == null) return null;
 			if (result.Count == 1) return Convert.ToInt32(result[0]["rank"]);
 
-			return -1;
+			return null;
         }
 
 		private List<Dictionary<string, object>> ReadFromQuery(string query, Dictionary<string, object> keyValue = null, object lockObject = null)
@@ -1475,18 +1595,18 @@ namespace PRoConEvents
 			return this.ConvertDataTableToList(dataTable);
 		}
 
-		private void InsertData(string table, Dictionary<string, object> keyValue, object lockObject = null)
+		private long? InsertData(string table, Dictionary<string, object> keyValue, object lockObject = null)
         {
 			if (!this._isDatabaseReady)
             {
 				this.LogError("InsertData", "Database isn't connected yet");
-				return;
+				return null;
             }
 
 			if (keyValue.Count == 0)
             {
 				this.LogError("InsertData", "Given dictionary data is empty");
-				return;
+				return null;
 			}
 
 			var fields = new List<string>();
@@ -1495,7 +1615,7 @@ namespace PRoConEvents
 			foreach (var item in keyValue)
             {
 				fields.Add(item.Key);
-				values.Add(string.Format("@{0}", item.Key));
+				values.Add($"@{item.Key}");
 			}
 
 			var query = string.Format(
@@ -1508,7 +1628,88 @@ namespace PRoConEvents
 			var command = new MySqlCommand(query);
 
 			foreach (var item in keyValue)
-				command.Parameters.AddWithValue(string.Format("@{0}", item.Key), item.Value);
+				command.Parameters.AddWithValue($"@{item.Key}", item.Value);
+
+			this.ExecuteStatementWithParameters(command, lockObject);
+			return command.LastInsertedId;
+		}
+
+		private void UpdateData(string table, Dictionary<string, object> statementKeyValue, Dictionary<string, object> queryKeyValue, object lockObject = null)
+		{
+			if (!this._isDatabaseReady)
+			{
+				this.LogError("UpdateData", "Database isn't connected yet");
+				return;
+			}
+
+			if (statementKeyValue.Count == 0)
+			{
+				this.LogError("UpdateData", "Given dictionary data is empty");
+				return;
+			}
+
+			if (queryKeyValue.Count == 0)
+			{
+				this.LogError("UpdateData", "Given dictionary query data is empty");
+				return;
+			}
+
+			var setClause = new List<string>();
+			var whereClause = new List<string>();
+
+			foreach (var item in statementKeyValue)
+				setClause.Add($"{item.Key} = @{item.Key}");
+
+			foreach (var item in queryKeyValue) 
+				whereClause.Add($"{item.Key} = @{item.Key}");
+
+			var query = string.Format(
+				"UPDATE {0} SET {1} WHERE {2}",
+				table,
+				string.Join(", ", setClause),
+				string.Join(" AND ", whereClause)
+			);
+
+			var command = new MySqlCommand(query);
+
+			foreach (var item in statementKeyValue)
+				command.Parameters.AddWithValue($"@{item.Key}", item.Value);
+
+			foreach (var item in queryKeyValue)
+				command.Parameters.AddWithValue($"@{item.Key}", item.Value);
+
+			this.ExecuteStatementWithParameters(command, lockObject);
+		}
+
+		private void DeleteData(string table, Dictionary<string, object> keyValue, object lockObject = null)
+		{
+			if (!this._isDatabaseReady)
+			{
+				this.LogError("DeleteData", "Database isn't connected yet");
+				return;
+			}
+
+			if (keyValue.Count == 0)
+			{
+				this.LogError("DeleteData", "Given dictionary data is empty");
+				return;
+			}
+
+			var whereClause = new List<string>();
+
+			foreach (var item in keyValue)
+				whereClause.Add($"{item.Key} = @{item.Key}");
+
+			var query = string.Format(
+				"DELETE FROM {0} WHERE {1}",
+				table,
+				string.Join(" AND ", whereClause)
+			);
+
+			var command = new MySqlCommand(query);
+
+			foreach (var item in keyValue)
+				command.Parameters.AddWithValue($"@{item.Key}", item.Value);
 
 			this.ExecuteStatementWithParameters(command, lockObject);
 		}

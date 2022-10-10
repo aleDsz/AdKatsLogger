@@ -77,6 +77,7 @@ namespace AdKatsLoggerTest
         {
             var plugin = new AdKatsLogger();
             TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
             TestHelper.SetupServer(plugin);
 
             plugin.SetPluginVariable("Spam Protection|Enabled?", "Yes");
@@ -84,19 +85,26 @@ namespace AdKatsLoggerTest
             plugin.SetPluginVariable("Enable in-game commands?", "Yes");
             plugin.SetPluginVariable("Enable Ranking by score?", "Yes");
 
-            TestHelper.InsertPlayer(plugin, soldierName: "aleDsz", rankScore: 1, eaGuid: "aleDsz-EA-GUID");
-            TestHelper.InsertPlayer(plugin, soldierName: "Foo", rankScore: 2, eaGuid: "Foo-EA-GUID");
+            var players = new string[] { Faker.Internet.UserName(), Faker.Internet.UserName() };
+            var ranks = new int[] { 1, 2 };
 
-            plugin.OnPlayerJoin("aleDsz");
-            plugin.OnPlayerJoin("Foo");
+            for (var i = 0; i < players.Length; i++)
+            {
+                var player = players[i];
+                var expectedRank = ranks[i];
 
-            Assert.IsTrue(plugin.__StatsTracker__.ContainsKey("aleDsz"));
-            Assert.IsTrue(plugin.__StatsTracker__.ContainsKey("Foo"));
-            Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey("aleDsz"));
-            Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey("Foo"));
+                TestHelper.InsertPlayer(plugin, soldierName: player, rankScore: expectedRank, eaGuid: $"{player}-EA-GUID");
+                plugin.OnPlayerJoin(player);
 
-            Assert.AreEqual(1, plugin.__GetCurrentRankFromPlayer__("aleDsz"));
-            Assert.AreEqual(2, plugin.__GetCurrentRankFromPlayer__("Foo"));
+                // Wait until thread finishes
+                Thread.Sleep(100);
+                var rank = plugin.__GetCurrentRankFromPlayer__(player);
+
+                Assert.IsTrue(plugin.__StatsTracker__.ContainsKey(player));
+                Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey(player));
+                Assert.IsNotNull(rank);
+                Assert.AreEqual(expectedRank, rank);
+            }
         }
 
         [TestMethod("Test if when player joins, create new session and add into stats tracker with ranking by kills")]
@@ -105,6 +113,7 @@ namespace AdKatsLoggerTest
         {
             var plugin = new AdKatsLogger();
             TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
             TestHelper.SetupServer(plugin);
 
             plugin.SetPluginVariable("Spam Protection|Enabled?", "Yes");
@@ -112,62 +121,128 @@ namespace AdKatsLoggerTest
             plugin.SetPluginVariable("Enable in-game commands?", "Yes");
             plugin.SetPluginVariable("Enable Ranking by score?", "No");
 
-            TestHelper.InsertPlayer(plugin, soldierName: "aleDsz", rankKills: 50, eaGuid: "aleDsz-EA-GUID");
-            TestHelper.InsertPlayer(plugin, soldierName: "Foo", rankKills: 20, eaGuid: "Foo-EA-GUID");
+            var players = new string[] { Faker.Internet.UserName(), Faker.Internet.UserName() };
+            var ranks = new int[] { 50, 20 };
 
-            plugin.OnPlayerJoin("aleDsz");
-            plugin.OnPlayerJoin("Foo");
+            for (var i = 0; i < players.Length; i++)
+            {
+                var player = players[i];
+                var expectedRank = ranks[i];
 
-            Assert.IsTrue(plugin.__StatsTracker__.ContainsKey("aleDsz"));
-            Assert.IsTrue(plugin.__StatsTracker__.ContainsKey("Foo"));
-            Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey("aleDsz"));
-            Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey("Foo"));
+                TestHelper.InsertPlayer(plugin, soldierName: player, rankKills: expectedRank, eaGuid: $"{player}-EA-GUID");
+                plugin.OnPlayerJoin(player);
 
-            Assert.AreEqual(50, plugin.__GetCurrentRankFromPlayer__("aleDsz"));
-            Assert.AreEqual(20, plugin.__GetCurrentRankFromPlayer__("Foo"));
+                // Wait until thread finishes
+                Thread.Sleep(100);
+                var rank = plugin.__GetCurrentRankFromPlayer__(player);
+
+                Assert.IsTrue(plugin.__StatsTracker__.ContainsKey(player));
+                Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey(player));
+                Assert.IsNotNull(rank);
+                Assert.AreEqual(expectedRank, rank);
+            }
         }
 
         [TestMethod("Test if when player authenticates, add players into stats tracker with PB's GUID")]
         [TestCategory("PRoConPluginAPI")]
         public void TestOnPlayerAuthenticated()
         {
-            var plugin = new AdKatsLogger();
+            var plugin = new AdKatsLogger(); 
             TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
             TestHelper.SetupServer(plugin);
 
             plugin.SetPluginVariable("Stats Logging|Enabled?", "Yes");
-            TestHelper.InsertPlayer(plugin, soldierName: "aleDsz");
+
+            var soldierName = Faker.Internet.UserName();
+            TestHelper.InsertPlayer(plugin, soldierName: soldierName);
 
             var guid = Guid.NewGuid().ToString();
 
-            plugin.OnPlayerJoin("aleDsz");
-            plugin.OnPlayerAuthenticated("aleDsz", guid);
+            plugin.OnPlayerJoin(soldierName);
+            plugin.OnPlayerAuthenticated(soldierName, guid);
 
-            Assert.IsTrue(plugin.__StatsTracker__.ContainsKey("aleDsz"));
-            Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey("aleDsz"));
-            Assert.AreEqual(guid, plugin.__StatsTracker__["aleDsz"].Guid);
+            Assert.IsTrue(plugin.__StatsTracker__.ContainsKey(soldierName));
+            Assert.IsTrue(plugin.__WelcomeStatsDictionary__.ContainsKey(soldierName));
+            Assert.AreEqual(guid, plugin.__StatsTracker__[soldierName].Guid);
         }
 
-        [TestMethod("Test if when player sends a message, it persists into database")]
+        [TestMethod("Test if when player sends a global message, it persists into database")]
         [TestCategory("PRoConPluginAPI")]
-        public void TestOnChat()
+        public void TestOnGlobalChat()
         {
             var plugin = new AdKatsLogger();
             TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
             TestHelper.SetupServer(plugin);
 
             plugin.SetPluginVariable("Chat Logging|Enabled?", "Yes");
             plugin.SetPluginVariable("Chat Logging|Instant logging of chat messages?", "Yes");
-            TestHelper.InsertPlayer(plugin, soldierName: "aleDsz");
 
-            plugin.OnGlobalChat("aleDsz", "Sending to global");
-            plugin.OnTeamChat("aleDsz", "Sending to team", 1);
-            plugin.OnSquadChat("aleDsz", "Sending to squad", 1, 1);
+            var soldierName = Faker.Internet.UserName();
+            TestHelper.InsertPlayer(plugin, soldierName: soldierName);
 
-            var chatLog = plugin.__GetChatLogFromPlayer__("aleDsz");
+            plugin.OnGlobalChat(soldierName, "Sending to global");
+
+            // Wait until thread finishes
+            Thread.Sleep(300);
+
+            var chatLog = plugin.__GetChatLogFromPlayer__(soldierName);
 
             Assert.IsNotNull(chatLog);
-            Assert.AreEqual(3, chatLog.Count);
+            Assert.AreEqual(1, chatLog.Count);
+        }
+
+        [TestMethod("Test if when player sends a team message, it persists into database")]
+        [TestCategory("PRoConPluginAPI")]
+        public void TestOnTeamChat()
+        {
+            var plugin = new AdKatsLogger();
+            TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
+            TestHelper.SetupServer(plugin);
+
+            plugin.SetPluginVariable("Chat Logging|Enabled?", "Yes");
+            plugin.SetPluginVariable("Chat Logging|Instant logging of chat messages?", "Yes");
+
+            var soldierName = Faker.Internet.UserName();
+            TestHelper.InsertPlayer(plugin, soldierName: soldierName);
+
+            plugin.OnTeamChat(soldierName, "Sending to team", 1);
+
+            // Wait until thread finishes
+            Thread.Sleep(300);
+
+            var chatLog = plugin.__GetChatLogFromPlayer__(soldierName);
+
+            Assert.IsNotNull(chatLog);
+            Assert.AreEqual(1, chatLog.Count);
+        }
+
+        [TestMethod("Test if when player sends a squad message, it persists into database")]
+        [TestCategory("PRoConPluginAPI")]
+        public void TestOnSquadChat()
+        {
+            var plugin = new AdKatsLogger();
+            TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
+            TestHelper.SetupServer(plugin);
+
+            plugin.SetPluginVariable("Chat Logging|Enabled?", "Yes");
+            plugin.SetPluginVariable("Chat Logging|Instant logging of chat messages?", "Yes");
+
+            var soldierName = Faker.Internet.UserName();
+            TestHelper.InsertPlayer(plugin, soldierName: soldierName);
+
+            plugin.OnSquadChat(soldierName, "Sending to squad", 1, 1);
+
+            // Wait until thread finishes
+            Thread.Sleep(300);
+
+            var chatLog = plugin.__GetChatLogFromPlayer__(soldierName);
+
+            Assert.IsNotNull(chatLog);
+            Assert.AreEqual(1, chatLog.Count);
         }
     }
 }
