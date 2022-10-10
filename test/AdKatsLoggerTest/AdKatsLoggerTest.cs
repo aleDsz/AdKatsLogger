@@ -4,6 +4,7 @@ using PRoCon.Core;
 
 using PRoConEvents;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
@@ -243,6 +244,95 @@ namespace AdKatsLoggerTest
 
             Assert.IsNotNull(chatLog);
             Assert.AreEqual(1, chatLog.Count);
+        }
+
+        [TestMethod("Test if when server sends his updated information, it persists into database")]
+        [TestCategory("PRoConPluginAPI")]
+        public void TestOnServerInfo()
+        {
+            var plugin = new AdKatsLogger();
+            TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
+
+            var hostName = "127.0.0.1";
+            var port = Faker.RandomNumber.Next(40000, 50000).ToString();
+            var PRoConVersion = Faker.RandomNumber.Next(10000, 99999).ToString();
+            var ipAddress = $"{hostName}:{port}";
+
+            var serverInfo = new CServerInfo()
+            {
+                ServerName = "Super Sample Server",
+                GameMode = "TeamDeathMatch0",
+                Map = "MP_Prison",
+                MaxPlayerCount = 32,
+                PlayerCount = 2,
+                TotalRounds = 2,
+                CurrentRound = 1
+            };
+
+            plugin.OnPluginLoaded(hostName, port, PRoConVersion);
+            plugin.OnServerInfo(serverInfo);
+
+            // Wait until thread finishes
+            Thread.Sleep(300);
+
+            var serverID = plugin.__GetServerID__(ipAddress);
+            Assert.IsNotNull(serverID);
+        }
+
+        [TestMethod("Test if when server sends his updated information, it updates the database data")]
+        [TestCategory("PRoConPluginAPI")]
+        public void TestOnServerInfoAlreadyPersisted()
+        {
+            var plugin = new AdKatsLogger();
+            var pluginEnvironment = new List<string>() {
+                "1.5.3.5",
+                "BF4",
+                "None",
+                "true"
+            };
+
+            plugin.OnPluginLoadingEnv(pluginEnvironment);
+
+            TestHelper.ConfigureDatabase(plugin);
+            TestHelper.SetupGame(plugin);
+
+            plugin.SetPluginVariable("Query Details|Minimum seconds between ServerInfo Updates", "1");
+            plugin.SetPluginVariable("Stats Logging|Enable real-time scoreboard?", "No");
+
+            var hostName = "127.0.0.1";
+            var port = Faker.RandomNumber.Next(40000, 50000).ToString();
+            var PRoConVersion = Faker.RandomNumber.Next(10000, 99999).ToString();
+            var ipAddress = $"{hostName}:{port}";
+
+            TestHelper.SetupServer(plugin, usedSlots: 16, maxSlots: 32, ipAddress: ipAddress);
+
+            var serverInfo = new CServerInfo()
+            {
+                ServerName = "Super Sample Server",
+                GameMode = "TeamDeathMatch0",
+                GameMod = GameMods.None,
+                Map = "MP_Prison",
+                MaxPlayerCount = 64,
+                PlayerCount = 32,
+                TotalRounds = 2,
+                CurrentRound = 1
+            };
+
+            plugin.OnPluginLoaded(hostName, port, PRoConVersion);
+            plugin.OnServerInfo(serverInfo);
+
+            // Wait until thread finishes
+            Thread.Sleep(700);
+
+            var server = plugin.__GetServer__(ipAddress);
+
+            Assert.IsNotNull(server);
+            Assert.AreEqual(serverInfo.ServerName, server["ServerName"]);
+            Assert.AreEqual(serverInfo.PlayerCount, Convert.ToInt32(server["UsedSlots"]));
+            Assert.AreEqual(serverInfo.MaxPlayerCount, Convert.ToInt32(server["MaxSlots"]));
+            Assert.AreEqual(serverInfo.Map, server["MapName"]);
+            Assert.AreEqual(serverInfo.GameMode, server["GameMode"]);
         }
     }
 }

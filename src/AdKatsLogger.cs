@@ -59,7 +59,7 @@ namespace PRoConEvents
 		private int _transactionRetryCount;
 
 		// PRoCon
-		private string _serverHostname;
+		private string _serverHostName;
 		private string _serverPort;
 		private string _serverPRoConVersion;
 
@@ -133,9 +133,12 @@ namespace PRoConEvents
 
 		// Server data
 		private int _serverID;
+		private int _gameID;
 		private int _serverGroup;
 		private int _serverInfoDelay;
-		private string _gameMod;
+		private int _roundStartCount;
+		private int _roundRestartCount;
+		private string _game;
 		private string _serverName;
 		private bool _isPluginEnabled;
 		private bool _isStreaming;
@@ -189,11 +192,14 @@ namespace PRoConEvents
 			this._offset = 0;
 			this._serverGroup = 0;
 			this._serverID = 0;
+			this._gameID = 0;
 			this._transactionRetryCount = 3;
 			this._numberOfAllowedRequests = 10;
 			this._welcomeLoggingDelay = 5;
 			this._intervalTop10ForPeriod = 7;
 			this._serverInfoDelay = 30;
+			this._roundStartCount = 2;
+			this._roundRestartCount = 1;
 
 			this._chatLogTracker = new List<ChatLog>();
 			this._statsTracker = new Dictionary<string, Stats>();
@@ -214,6 +220,8 @@ namespace PRoConEvents
 			
 			this._connStrBuilder = new MySqlConnectionStringBuilder();
 
+			this._serverName = "";
+			this._game = "";
 			this._isStreaming = true;
 			this._isPluginEnabled = false;
 			this._isPluginReady = false;
@@ -779,7 +787,7 @@ namespace PRoConEvents
 
 		public void OnPluginLoaded(string hostName, string port, string PRoConVersion)
 		{
-			this._serverHostname = hostName;
+			this._serverHostName = hostName;
 			this._serverPort = port;
 			this._serverPRoConVersion = PRoConVersion;
 			this.RegisterEvents(this.GetType().Name, "OnListPlayers","OnPlayerAuthenticated", "OnPlayerJoin", "OnGlobalChat", "OnTeamChat", "OnSquadChat", "OnPunkbusterMessage", "OnPunkbusterPlayerInfo", "OnServerInfo", "OnLevelLoaded",
@@ -787,7 +795,12 @@ namespace PRoConEvents
 													 "OnRoundStartPlayerCount", "OnRoundRestartPlayerCount", "OnRoundOver");
 
 			this.RegisterCommand(_loggerStatusCommand);
+			this.MaybeCreateGame();
 		}
+
+		// Non-official callback
+
+		public void OnPluginLoadingEnv(List<string> pluginEnv) => this._game = pluginEnv[1].ToUpper();
 
 		// PRoConPluginAPI callbacks
 
@@ -854,36 +867,98 @@ namespace PRoConEvents
 				ThreadPool.QueueUserWorkItem(delegate { this.LogChat(speaker, message, "Squad"); });
 		}
 
-        public override void OnServerInfo(CServerInfo serverInfo)
+        public override void OnPunkbusterMessage(string punkbusterMessage)
         {
+            base.OnPunkbusterMessage(punkbusterMessage);
+        }
+
+        public override void OnPunkbusterPlayerInfo(CPunkbusterInfo playerInfo)
+        {
+            base.OnPunkbusterPlayerInfo(playerInfo);
+        }
+
+		public override void OnServerInfo(CServerInfo serverInfo)
+		{
 			this._mapStats.GameMode = serverInfo.GameMode;
 			this._mapStats.PlayerCountList.Add(serverInfo.PlayerCount);
 
-			if (this._mapStats.MapLoadedAt == DateTime.MinValue || this._mapStats.MapLoadedAt == null)
+			var isMapLoadedAt = this._mapStats.MapLoadedAt == DateTime.MinValue || this._mapStats.MapLoadedAt == null;
+
+			if (serverInfo.PlayerCount >= this._roundStartCount && isMapLoadedAt)
 				this._mapStats.MapLoadedAt = DateTime.Now;
 
 			this._mapStats.MapName = serverInfo.Map;
 			this._mapStats.Round = serverInfo.CurrentRound;
 			this._mapStats.NumberOfRounds = serverInfo.TotalRounds;
 			this._mapStats.ServerPlayerMax = serverInfo.MaxPlayerCount;
+			this._serverName = serverInfo.ServerName;
 
 			var secondsFromLastUpdate = 0D;
-			
+
 			if (this._lastServerUpdatedAt != null)
 				secondsFromLastUpdate = DateTime.Now.Subtract(this._lastServerUpdatedAt.Value).TotalSeconds;
 
-			if (this._serverID == 0 || this._serverInfoDelay <= secondsFromLastUpdate)
+			if (this._serverID == 0)
             {
 				this._lastServerUpdatedAt = DateTime.Now;
 				ThreadPool.QueueUserWorkItem(delegate { this.MaybeCreateServer(serverInfo); });
 			}
-
-			base.OnServerInfo(serverInfo);
+			else if (this._lastServerUpdatedAt == null)
+            {
+				this._lastServerUpdatedAt = DateTime.Now;
+				ThreadPool.QueueUserWorkItem(delegate { this.MaybeCreateServer(serverInfo); });
+			}
+			else if (this._serverInfoDelay <= secondsFromLastUpdate)
+			{
+				this._lastServerUpdatedAt = DateTime.Now;
+				ThreadPool.QueueUserWorkItem(delegate { this.MaybeCreateServer(serverInfo); });
+			}
 		}
 
-		#region Debug/Test only methods
+        public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset)
+        {
+            base.OnListPlayers(players, subset);
+        }
+
+		public override void OnPlayerSpawned(string soldierName, Inventory spawnedInventory)
+		{
+			base.OnPlayerSpawned(soldierName, spawnedInventory);
+		}
+
+		public override void OnPlayerKilled(Kill kKillerVictimDetails)
+        {
+            base.OnPlayerKilled(kKillerVictimDetails);
+        }
+
+        public override void OnPlayerLeft(CPlayerInfo playerInfo)
+        {
+            base.OnPlayerLeft(playerInfo);
+        }
+
+        public override void OnRoundOverPlayers(List<CPlayerInfo> players)
+        {
+            base.OnRoundOverPlayers(players);
+        }
+
+        public override void OnRoundOver(int winningTeamId)
+        {
+            base.OnRoundOver(winningTeamId);
+        }
+
+		public override void OnRoundStartPlayerCount(int limit) => this._roundStartCount = limit;
+
+        public override void OnRoundRestartPlayerCount(int limit) => this._roundRestartCount = limit;
+
+        public override void OnLevelLoaded(string mapFileName, string gamemode, int roundsPlayed, int roundsTotal)
+        {
+            base.OnLevelLoaded(mapFileName, gamemode, roundsPlayed, roundsTotal);
+        }
+
+        // Test only (if DEBUG flag is active)
+
+        #region Test only methods
 #if DEBUG
-		public Dictionary<string, Stats> __StatsTracker__ { get { return this._statsTracker; } }
+        public Dictionary<string, Stats> __StatsTracker__ { get { return this._statsTracker; } }
 		public Dictionary<string, DateTime> __WelcomeStatsDictionary__ { get { return this._welcomeStatsDictionary; } }
 		public int? __GetCurrentRankFromPlayer__(string soldierName) => this.GetRank(soldierName);
 
@@ -1017,24 +1092,61 @@ namespace PRoConEvents
 			return null;
 		}
 
+		public int? __GetGameID__(string gameName)
+		{
+			if (!this._isDatabaseReady) return null;
+			if (this._gameID != 0) return this._gameID;
+
+			var parameters = new Dictionary<string, object>();
+			parameters.Add("Name", this._game);
+
+			var query = "SELECT `GameID` FROM tbl_games WHERE `Name` = @Name";
+			var result = this.ReadFromQuery(query, parameters);
+
+			if (result == null) return null;
+			if (result.Count == 1) return Convert.ToInt32(result[0]["GameID"]);
+
+			return null;
+		}
+
 		public int? __GetServerID__(string ipAddress)
 		{
 			if (!this._isDatabaseReady) return null;
 			if (this._serverID != 0) return this._serverID;
 
-			var parameters = new Dictionary<string, object>();
-			parameters.Add("IP_Address", ipAddress);
-
-			var query = "SELECT `ServerID` FROM tbl_server WHERE IP_Address = @IP_Address";
-			var result = this.ReadFromQuery(query, parameters);
+			var result = this.__GetServer__(ipAddress);
 
 			if (result == null) return null;
-			if (result.Count == 1) return Convert.ToInt32(result[0]["ServerID"]);
+			if (result.Count == 1) return Convert.ToInt32(result["ServerID"]);
 
 			return null;
 		}
 
-		public void __SetServerID__(int serverID) => this._serverID = serverID;
+		public Dictionary<string, object> __GetServer__(string ipAddress)
+		{
+			if (!this._isDatabaseReady) return null;
+
+			var parameters = new Dictionary<string, object>();
+			parameters.Add("IP_Address", ipAddress);
+
+			var query = "SELECT * FROM tbl_server WHERE IP_Address = @IP_Address";
+			var result = this.ReadFromQuery(query, parameters);
+
+			if (result == null) return null;
+			if (result.Count == 1) return result[0];
+
+			return null;
+		}
+
+		public void __SetServerID__(int serverID)
+		{
+			if (serverID > 0) this._serverID = serverID;
+		}
+
+		public void __SetGameID__(int gameID)
+		{
+			if (gameID > 0) this._gameID = gameID;
+		}
 
 		public long? __InsertData__(string table, Dictionary<string, object> keyValue) => this.InsertData(table, keyValue, this._tableBuilderLock);
 #endif
@@ -1132,7 +1244,7 @@ namespace PRoConEvents
 			this.LogDebug("MaybeCreateServer", "Executing the ServerID query");
 
 			var query = "SELECT `ServerID` FROM tbl_server WHERE IP_Address = @IP_Address";
-			var ipAddress = $"{this._serverHostname}:{this._serverPort}";
+			var ipAddress = $"{this._serverHostName}:{this._serverPort}";
 
 			var queryKeyValue = new Dictionary<string, object>();
 			queryKeyValue.Add("IP_Address", ipAddress);
@@ -1145,11 +1257,11 @@ namespace PRoConEvents
 
 			statementKeyValue.Add("IP_Address", ipAddress);
 			statementKeyValue.Add("ServerName", serverInfo.ServerName);
-			statementKeyValue.Add("ServerGroup", ipAddress);
+			statementKeyValue.Add("ServerGroup", this._serverGroup);
 			statementKeyValue.Add("UsedSlots", serverInfo.PlayerCount);
 			statementKeyValue.Add("MaxSlots", serverInfo.MaxPlayerCount);
 			statementKeyValue.Add("MapName", serverInfo.Map);
-			statementKeyValue.Add("GameID", ipAddress);
+			statementKeyValue.Add("GameID", this._gameID);
 			statementKeyValue.Add("GameMode", serverInfo.GameMode);
 
 			if (this._serverID == 0)
@@ -1518,6 +1630,30 @@ namespace PRoConEvents
 			}
 		}
 
+		private void MaybeCreateGame()
+        {
+			if (!this._isDatabaseReady) return;
+
+			var parameters = new Dictionary<string, object>();
+			parameters.Add("Name", this._game);
+
+			var query = "SELECT `GameID` FROM tbl_games WHERE `Name` = @Name";
+			var queryResult = this.ReadFromQuery(query, parameters);
+			var shouldCreate = false;
+
+			if (queryResult == null) shouldCreate = true;
+			if (queryResult.Count == 0) shouldCreate = true;
+
+			if (!shouldCreate)
+            {
+				this._gameID = Convert.ToInt32(queryResult[0]["GameID"]);
+				return;
+            }
+
+			var statementResult = this.InsertData("tbl_games", parameters, this._tableBuilderLock);
+			if (statementResult.HasValue) this._gameID = Convert.ToInt32(statementResult.Value);
+		}
+
 		private int? GetRank(string soldierName)
         {
 			this.LogDebug("GetRank", $"Retrieving rank from player {soldierName}");
@@ -1731,6 +1867,8 @@ namespace PRoConEvents
 					command.Connection = this._conn;
 					command.Transaction = this._transaction;
 					command.ExecuteNonQuery();
+
+					this._lastCommandExecutedAt = DateTime.Now;
 				}
 			}
 			catch (MySqlException e)
@@ -2103,8 +2241,12 @@ namespace PRoConEvents
 
 		private void ConsoleWrite(string method, string level, string message)
 		{
+#if DEBUG
+			Console.WriteLine($"[{method}] {level}: {message}");
+#else
 			if (this._allowedLoggerLevel.Contains(level))
-				this.ExecuteCommand("procon.protected.pluginconsole.write", string.Format("[{0}] {1}: {2}", method, FormatLevel(level), message));
+				this.ExecuteCommand("procon.protected.pluginconsole.write", $"[{method}] {FormatLevel(level)}: {message}");
+#endif
 		}
 
 		private string FormatLevel(string level)

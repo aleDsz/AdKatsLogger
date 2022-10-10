@@ -21,38 +21,58 @@ namespace AdKatsLoggerTest
             plugin.__CleanDatabase__();
         }
 
-        public static void SetupGame(AdKatsLogger plugin, int gameID = 1)
+        public static void SetupGame(AdKatsLogger plugin, string gameName = "BF4")
         {
             var game = new Dictionary<string, object>();
+            game.Add("Name", gameName);
 
-            game.Add("GameID", gameID);
-            game.Add("Name", "BF4");
+            var maybeGameID = plugin.__GetGameID__(gameName);
 
-            plugin.__InsertData__("tbl_games", game);
+            if (!maybeGameID.HasValue)
+            {
+                var result = plugin.__InsertData__("tbl_games", game);
+                if (result.HasValue) plugin.__SetGameID__(Convert.ToInt32(result.Value));
+                return;
+            }
+
+            plugin.__SetGameID__(maybeGameID.Value);
         }
 
-        public static void SetupServer(AdKatsLogger plugin, int gameID = 1, string hostName = "127.0.0.1:47400", int serverGroup = 0)
+        public static void SetupServer(
+            AdKatsLogger plugin,
+            string gameName = "BF4",
+            int usedSlots = 0,
+            int maxSlots = 64,
+            string serverName = "Sample server",
+            string mapName = "MP_Prison",
+            string gameMode = "TeamDeathMatch0",
+            string ipAddress = "127.0.0.1:47400",
+            int serverGroup = 0
+        )
         {
+            var maybeGameID = plugin.__GetGameID__(gameName);
+            if (!maybeGameID.HasValue) throw new NullReferenceException("AdKatsLogger._gameID is null");
+            var gameID = maybeGameID.Value;
+
             var server = new Dictionary<string, object>();
 
             server.Add("ServerGroup", serverGroup);
-            server.Add("IP_Address", hostName);
-            server.Add("ServerName", "Sample server");
+            server.Add("IP_Address", ipAddress);
+            server.Add("ServerName", serverName);
             server.Add("GameID", gameID);
-            server.Add("UsedSlots", 0);
-            server.Add("MaxSlots", 64);
-            server.Add("MapName", "MP_Prison");
-            server.Add("GameMode", "TeamDeathMatch0");
+            server.Add("UsedSlots", usedSlots);
+            server.Add("MaxSlots", maxSlots);
+            server.Add("MapName", mapName);
+            server.Add("GameMode", gameMode);
             server.Add("ConnectionState", "on");
 
             var result = plugin.__InsertData__("tbl_server", server);
-            if (result != null) plugin.__SetServerID__(Convert.ToInt32(result.Value));
+            if (result.HasValue) plugin.__SetServerID__(Convert.ToInt32(result.Value));
         }
 
         public static void InsertPlayer(
             AdKatsLogger plugin,
             string soldierName = "Foo",
-            int gameID = 1,
             string hostName = "",
             int serverGroup = 0,
             int globalRank = 1,
@@ -67,6 +87,10 @@ namespace AdKatsLoggerTest
             var maybeServerID = plugin.__GetServerID__(hostName);
             if (!maybeServerID.HasValue) throw new NullReferenceException("AdKatsLogger._serverID is null");
             var serverID = maybeServerID.Value;
+
+            var maybeGameID = plugin.__GetGameID__("BF4");
+            if (!maybeGameID.HasValue) throw new NullReferenceException("AdKatsLogger._gameID is null");
+            var gameID = maybeGameID.Value;
 
             var playerData = new Dictionary<string, object>();
 
