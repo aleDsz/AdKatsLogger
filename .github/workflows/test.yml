@@ -36,7 +36,7 @@ jobs:
         password: adkatslogger
 
     - name: Setup database
-      run: mysql -uroot -h127.0.0.1 -e 'CREATE DATABASE adkatslogger'
+      run: mysql -u root -h localhost -e 'CREATE DATABASE adkatslogger'
 
     - name: Run tests
       run: dotnet test .\test\bin\Debug\AdKatsLoggerTest.dll
