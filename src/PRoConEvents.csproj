@@ -7,8 +7,8 @@
     <ProjectGuid>{D78F7CDF-CDF2-4E1E-B86C-0338B1CD3E43}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>CChatGUIDStatsLogger</RootNamespace>
-    <AssemblyName>CChatGUIDStatsLogger</AssemblyName>
+    <RootNamespace>AdKatsLogger</RootNamespace>
+    <AssemblyName>AdKatsLogger</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>

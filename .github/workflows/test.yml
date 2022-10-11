@@ -1,0 +1,45 @@
+name: validate changes
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1.0.7
+
+    - name: Setup VSTest Path
+      uses: darenm/Setup-VSTest@v1
+
+    - name: Restore dependencies
+      run: nuget restore AdKatsLogger.sln
+
+    - name: Build solution
+      run: msbuild.exe AdKatsLogger.sln /p:platform="Any CPU" /p:configuration="Debug"
+
+    - name: Setup MySQL
+      uses: shogo82148/actions-setup-mysql@v1
+      with:
+        mysql-version: '5.7'
+        user: adkatslogger
+        password: adkatslogger
+
+    - name: Setup database
+      run: mysql -u root -h localhost -e 'CREATE DATABASE adkatslogger'
+
+    - name: Run tests
+      run: vstest.console.exe test\bin\Debug\AdKatsLoggerTest.dll
